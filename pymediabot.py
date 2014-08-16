@@ -16,78 +16,63 @@ import re
 import os
 import shutil
 import sys
+import logging
 
 import scraper
 
-
-def exechanges(src, moviefile, dst, NEWDIR, action, conflict, verbose):
-    if os.path.exists(dst):
-        if verbose:
-            print "+ Destination exists."
-        if conflict == 'override':
-            if verbose:
-                print "+ Override ON."
-            exeaction(src, moviefile, dst, NEWDIR, action, verbose)
-        elif conflict == 'auto':
-            if os.stat(src).st_mtime > os.stat(dst).st_mtime:
-                if verbose:
-                    print "+ Auto ON, destination is older."
-                exeaction(src, moviefile, dst, NEWDIR, action, verbose)
-        else:
-            print "- FILE FOUND ON DESTINATION, OVERRIDE IS OFF"
-            sys.exit()
-    else:
-        if verbose:
-            print "+ Destination does not exist."
-        exeaction(src, moviefile, dst, NEWDIR, action, verbose)
+log = logging.getLogger(__name__)
 
 
-def exeaction(src, moviefile, dst, NEWDIR, action, verbose):
+def exechanges(src, moviefile, dst, NEWDIR, action, conflict):
     if action == 'test':
-        if verbose:
-            print "+ Test action:"
-        print("mv %s ->  %s" % (src, dst))
+        log.debug("Test action:")
+        log.info("TEST: %s ->  %s" % (moviefile, dst))
     else:
-        if verbose:
-            print "+ Creating and renaming."
-        if NEWDIR:
-            os.makedirs(os.path.dirname(dst))
+        if os.path.exists(dst):
+            log.debug("Destination exists.")
+            if conflict == 'override':
+                log.debug("Override ON.")
+                exeaction(src, moviefile, dst, NEWDIR, action)
+            elif conflict == 'auto':
+                if os.stat(src).st_mtime > os.stat(dst).st_mtime:
+                    log.debug("Override in auto mode, destination is older.")
+                    exeaction(src, moviefile, dst, NEWDIR, action)
+            else:
+                log.error("FILE FOUND ON DESTINATION, OVERRIDE IS OFF")
+                sys.exit()
+        else:
+            log.debug("Destination does not exist.")
+            exeaction(moviefile, dst, NEWDIR, action)
+
+
+def exeaction(moviefile, dst, NEWDIR, action):
+    log.debug("Creating and renaming.")
+    if NEWDIR:
+        os.makedirs(os.path.dirname(dst))
     if action == 'copy':
-        if verbose:
-            print "+ Copying."
+        log.debug("Copying.")
         shutil.copy(moviefile, dst)
     elif action == 'move':
-        if verbose:
-            print "+ Moving."
+        log.debug("Moving.")
         shutil.move(moviefile, dst)
     elif action == 'symlink':
-        if verbose:
-            print "+ Symlinking."
+        log.debug("Symlinking.")
         os.symlink(moviefile, dst)
     elif action == 'hardlink':
-        if verbose:
-            print "+ Hardlinking."
+        log.debug("Hardlinking.")
         os.link(moviefile, dst)
-    print "- Done. ヾ(＠⌒ー⌒＠)ノ"
+    log.info("Done. ヾ(＠⌒ー⌒＠)ノ")
 
 
-def rename(string, filename, info, verbose):
+def rename(string, filename, info):
     '''
     Parse --set movieFormat
     Parse --set serieFormat
     '''
     movieFormat = re.search('(?<=movieFormat=)"(.*?)"', string).group(1)
     serieFormat = re.search('(?<=serieFormat=)"(.*?)"', string).group(1)
-    #animeFormat = re.search('(?<=animeFormat=)"(.*?)"', string).group(1)
     ext = filename[-3:]
     if 'episode' not in info:
-        #if verbose:
-        #    movieFormat = re.sub(r'{fn}', 'Filename.ext', movieFormat)
-        #    movieFormat = re.sub(r'{n}', 'Movie', movieFormat)
-        #    movieFormat = re.sub(r'{y}', 'Year', movieFormat)
-        #    movieFormat = re.sub(r'{ext}', 'ext', movieFormat)
-        #    print "+ movieFormat: %s" % movieFormat
-
         movieFormat = re.sub(
             r'{fn}', '%s' % os.path.basename(filename), movieFormat)
         movieFormat = re.sub(
@@ -98,7 +83,6 @@ def rename(string, filename, info, verbose):
             r'{ext}', '%s' % ext, movieFormat)
         return movieFormat
     else:
-        # if verbose add print
         serieFormat = re.sub(
             r'{fn}', '%s' % os.path.basename(filename), serieFormat)
         serieFormat = re.sub(
@@ -114,15 +98,14 @@ def rename(string, filename, info, verbose):
         return serieFormat
 
 
-def findfile(path, tvs, verbose):
+def findfile(path):
     '''
     This code is to find the movie file, guessing that the movie file
     inside a directory is bigger than 90\% of the total size of it.
     '''
     # If the input is a directory, find movie
-    if os.path.isdir(path) and not tvs:
-        if verbose:
-            print "+ Searching for movie file in directory."
+    if os.path.isdir(path):
+        log.debug("Searching for movie file in directory.")
         total_size = 0
         fpsizen = 0
         # Loop to add size of any file inside the directory
@@ -137,31 +120,26 @@ def findfile(path, tvs, verbose):
                 total_size += fpsize
         # Check if the biggest file is bigger than 90%
         if fpsizen > (total_size * 0.9):
-            if verbose:
-                print "+ Movie found: %s [%s bytes]" % \
-                    (os.path.basename(fpn), fpsize)
+            log.debug(
+                "Movie found: %s [%s bytes]" %
+                (os.path.basename(fpn), fpsize))
             moviefile = fpn
         else:
-            if verbose:
-                print "+ No movie found under: %s" % path
-            print "- FILE BIGGER THAN 90% OF THE SIZE OF DIRECTORY NOT FOUND"
-            print "- THE PROGRAM COULD NOT FIND ANY MOVIE FILE"
+            log.debug("No movie found under: %s" % path)
+            log.error("FILE BIGGER THAN 90% OF DIRECTORY'S SIZE NOT FOUND.")
+            log.error("THE PROGRAM COULD NOT FIND ANY MOVIE FILE.")
             sys.exit()
-    # If the path is the directory with tvs episodes on it
-    elif os.path.isdir(path) and tvs:
-        pass
     # If the input is a file, we guess it is the movie
     else:
         moviefile = path
-        if verbose:
-            print "+ The input was a movie.\n+ Movie found: %s [%s bytes]" % \
-                (os.path.basename(moviefile),
-                    os.stat(moviefile).st_size)
-    print "- Input: %s" % os.path.basename(moviefile)
+        log.debug(
+            "The input was a movie.\n+ Movie found: %s [%s bytes]" %
+            (os.path.basename(moviefile), os.stat(moviefile).st_size))
+    log.error("Input: %s" % os.path.basename(moviefile))
     return moviefile
 
 
-def main():
+def parseinput():
     parser = argparse.ArgumentParser(
         description='Console tool for organizing your movies, \
         tvshows and anime. Aiming for simplistic usage and the results of \
@@ -186,39 +164,46 @@ def main():
                     serieFormat="{n}/Season {s}/{n} - S{s}E{en} - {e}.{ext})',
                         default='movieFormat="{n} ({y})/{fn}" \
                     serieFormat="{n}/Season {s}/{n} - S{s}E{en} - {e}.{ext}"')
-                        #animeFormat="{n}/{n} - {en} - {e}.{ext}"
     parser.add_argument('-v', '--verbose',
                         help='increase output verbosity',
                         action='store_true')
     args = parser.parse_args()
 
+    if args.verbose:
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.INFO)
+    return args
+
+
+def main():
+    args = parseinput()
+    log.info("INPUT: %s" % os.path.basename(args.PATH))
     # Grab media info
-    mediainfo = scraper.main(args.PATH, args.verbose)
+    mediainfo = scraper.main(args.PATH)
     if 'episode' not in mediainfo:
         # Grab movie file and directory
-        mediafile = findfile(args.PATH, False, args.verbose)
+        mediafile = findfile(args.PATH, False)
         # Replace defined Format with real values
-        dst = rename(args.set, mediafile, mediainfo, args.verbose)
+        dst = rename(args.set, mediafile, mediainfo)
     elif 'episode' in mediainfo and not os.path.isdir(args.PATH):
         mediafile = args.PATH
         # Replace defined Format with real values
-        dst = rename(args.set, mediafile, mediainfo, args.verbose)
+        dst = rename(args.set, mediafile, mediainfo)
     else:
-        print "- ERROR FINDING FILE."
+        log.error("ERROR FINDING FILE.")
     # Check if format has an added directory
-    print dst
     if os.path.split(dst.rstrip(args.output))[0] == '':
         NEWDIR = False
     else:
         NEWDIR = True
-        if args.verbose:
-            print "+ New destination has added directories."
+        log.debug("+ New destination has added directories.")
     # Update destination
     dst = os.path.join(args.output, dst)
     # Execute changes
     exechanges(
         args.PATH, mediafile, dst, NEWDIR,
-        args.action, args.conflict, args.verbose)
+        args.action, args.conflict)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 #!/usr/bin/python
 import sys
 import os
+import logging as log
 
 import keyfiles
 import guessit
@@ -14,16 +15,15 @@ TVS = False
 TVSM = False
 
 
-def main(path, verbose):
+def main(path):
     '''
     It will either find the IMDB ID in a nfo file or it will
     guess the title from the file/directory name. Then it will
     retrieve the info from tmdb or search and retrieve the info
     from the first match respectively.
     '''
-    if verbose:
-        print "+ Guessing name."
-    guessed = guesspath(path, verbose)
+    log.debug("Guessing name.")
+    guessed = guesspath(path)
     if guessed['type'] == 'episode':
 #        TVS = True
         if 'episodeList' in guessed:
@@ -38,60 +38,47 @@ def main(path, verbose):
         sys.exit()
 
     try:
-        if verbose:
-            print "+ Searching for nfo file."
-        nfofile = searchnfo(path, verbose)
-        if verbose:
-            print "+ Parsing file."
-        imdbid = parsenfo(nfofile, verbose)
+        log.debug("Searching for nfo file.")
+        nfofile = searchnfo(path)
+        log.debug("Parsing file.")
+        imdbid = parsenfo(nfofile)
         if MOVIE:
-            if verbose:
-                print "+ Calling tmdbget for %s." % imdbid
+            log.debug("Calling tmdbget for %s." % imdbid)
             media = tmdbget(imdbid)
-            if verbose:
-                print "+ Movie fetched."
+            log.debug("Movie fetched.")
         else:
-            if verbose:
-                print "+ Calling tvdbget for %s." % imdbid
+            log.debug("Calling tvdbget for %s." % imdbid)
             media = tvdbget(imdbid, guessed['season'],
-                            guessed['episodeNumber'], TVSM, verbose)
-            if verbose:
-                print "+ TV Show fetched."
+                            guessed['episodeNumber'], TVSM)
+            log.debug("TV Show fetched.")
     except:
-        if verbose:
-            print "+ Fallback: Guessed name."
+        log.debug("Fallback: Guessed name.")
         if MOVIE:
-            if verbose:
-                print "+ Calling tmdbsearch with %s." % guessed['title']
-            media = tmdbsearch(guessed['title'], verbose)
-            if verbose:
-                print "+ Movie fetched."
+            log.debug("Calling tmdbsearch with %s." % guessed['title'])
+            media = tmdbsearch(guessed['title'])
+            log.debug("Movie fetched.")
         else:
-            if verbose:
-                print "+ Calling tvdbsearch with %s." % guessed['series']
+            log.debug("Calling tvdbsearch with %s." % guessed['series'])
             media = tvdbsearch(
                 guessed['series'], guessed['season'],
-                guessed['episodeNumber'], TVSM, verbose)
-            if verbose:
-                print "+ TV Show fetched."
+                guessed['episodeNumber'], TVSM)
+            log.debug("TV Show fetched.")
     return media
 
 
-def searchnfo(path, verbose):
+def searchnfo(path):
     '''
     This will search for a nfo file
     '''
     if os.path.isdir(path):
         for f in os.listdir(path):
             if f.lower().endswith('.nfo'):
-                if verbose:
-                    print "+ NFO Found."
+                log.debug("NFO Found.")
                 return os.path.join(path, f)
-    if verbose:
-        print "+ NFO NOT Found."
+    log.debug("NFO NOT Found.")
 
 
-def parsenfo(file, verbose):
+def parsenfo(file):
     '''
     This will search for the imdbid in a nfo file.
     '''
@@ -102,32 +89,27 @@ def parsenfo(file, verbose):
                     start = pos + len(IMDBURL)
                     end = start + 9
                     imdbid = line[start:end]
-                    if verbose:
-                        print "+ IMDB ID Found."
+                    log.debug("IMDB ID Found.")
                     return imdbid
-    if verbose:
-        print "+ IMDB ID NOT Found."
+    log.debug("IMDB ID NOT Found.")
 
 
-def guesspath(path, verbose):
+def guesspath(path):
     '''
     guessit version 0.5.4 needs file extension to guess.
     Newly guessit version 0.7.1 can accept directory names.
     '''
     guess = guessit.guess_video_info(path)
+    if guess['type'] == 'video':
+        try:
+            log.debug(
+                "Guess: %s (%s)." % (guess['title'], guess['year']))
+        except:
+            log.debug("Guess: %s." % guess['title'])
+    else:
+        log.debug("Guess: %s." % guess['series'])
 
-    if verbose:
-        if guess['type'] == 'video':
-            try:
-                print "+ Guess: %s (%s)." % \
-                    (guess['title'], guess['year'])
-            except:
-                print "+ Guess: %s." % guess['title']
-
-        else:
-            print "+ Guess: %s." % guess['series']
-
-        print "+ Guess: %s." % guess['type']
+    log.debug("Guess: %s." % guess['type'])
     return guess
 
 
@@ -141,7 +123,7 @@ def tmdbget(imdbid):
     return result
 
 
-def tmdbsearch(title, verbose):
+def tmdbsearch(title):
     '''
     tmdbsearch will search the TMDB after the title and return
     the info found from the first match. A second call to tmdb
@@ -152,21 +134,20 @@ def tmdbsearch(title, verbose):
     search = tmdbsimple.Search()
     search.movie(query='%s' % title)  # response = search..
     results = search.results  # Match first result
-    if verbose:
-        print "+ Found %d results." % len(results)
-        resultsnames = []
-        for m in results:
-            resultsnames.append(m['title'])
-        if len(resultsnames) >= 3:
-            print "+   %s...." % ' * '.join(resultsnames[0:3])
-        else:
-            print "+   %s." % ' * '.join(resultsnames)
+    log.debug("Found %d results." % len(results))
+    resultsnames = []
+    for m in results:
+        resultsnames.append(m['title'])
+    if len(resultsnames) >= 3:
+        log.debug(" %s...." % ' * '.join(resultsnames[0:3]))
+    else:
+        log.debug(" %s." % ' * '.join(resultsnames))
 
     result = tmdbsimple.Movies(results[0]['id']).info()
     return result
 
 
-def createtvs(show, season, episode, TVSM, verbose):
+def createtvs(show, season, episode, TVSM):
     '''
     createtvs will transform a Show object inherited from the
     pytvdbapi library to a dict.
@@ -179,47 +160,44 @@ def createtvs(show, season, episode, TVSM, verbose):
     }
 
     if TVSM:
-        if verbose:
-            print "+ Multi-episode found: %s episodes" % TVSM
+        log.debug("Multi-episode found: %s episodes" % TVSM)
         tvsepisode['multi'] = '%s' % TVSM
         for epiloop in xrange(TVSM - 1):
             episode = episode + epiloop + 1
             tvsepisode['episode%s' % (epiloop + 1)] = episode
             tvsepisode['episode%sname' % (epiloop + 1)] = \
                 show[season][episode].EpisodeName
-    if verbose:
-        print "+ Episode dictionary: %s" % tvsepisode
+    log.debug("Episode dictionary: %s" % tvsepisode)
     return tvsepisode
 
 
-def tvdbget(imdbid, season, episode, TVSM, verbose):
+def tvdbget(imdbid, season, episode, TVSM):
     '''
     tvdbget is a simple get from the TVDB with the known imdbid
     '''
     tvdb = tvdbapi.TVDB(keyfiles.TVDBKEY)
     result = tvdb.get_series(imdbid, LANG, 'imdb')
-    return createtvs(result, season, episode, TVSM, verbose)
+    return createtvs(result, season, episode, TVSM)
 
 
-def tvdbsearch(title, season, episode, TVSM, verbose):
+def tvdbsearch(title, season, episode, TVSM):
     '''
     tvdbsearch will search the TVDB after the title and return
     the info found from the first match.
     '''
     tvdb = tvdbapi.TVDB(keyfiles.TVDBKEY)
     results = tvdb.search('%s' % title, LANG)  # Match first result
-    if verbose:
-        print "+ Found %d results." % len(results)
-        resultsnames = []
-        for tvs in results:
-            resultsnames.append(tvs.SeriesName)
-        if len(resultsnames) >= 3:
-            print "+   %s...." % ' * '.join(resultsnames[0:3])
-        else:
-            print "+   %s." % ' * '.join(resultsnames)
+    log.debug("Found %d results." % len(results))
+    resultsnames = []
+    for tvs in results:
+        resultsnames.append(tvs.SeriesName)
+    if len(resultsnames) >= 3:
+        log.debug(" %s...." % ' * '.join(resultsnames[0:3]))
+    else:
+        log.debug(" %s." % ' * '.join(resultsnames))
 
     result = results[0]
-    return createtvs(result, season, episode, TVSM, verbose)
+    return createtvs(result, season, episode, TVSM)
 
 if __name__ == "__main__":
     media = main(sys.argv[1], True)
