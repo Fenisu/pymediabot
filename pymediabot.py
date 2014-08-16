@@ -23,6 +23,25 @@ import scraper
 log = logging.getLogger(__name__)
 
 
+def exeaction(moviefile, dst, NEWDIR, action):
+    log.debug("Creating and renaming.")
+    if NEWDIR:
+        os.makedirs(os.path.dirname(dst))
+    if action == 'copy':
+        log.debug("Copying.")
+        shutil.copy(moviefile, dst)
+    elif action == 'move':
+        log.debug("Moving.")
+        shutil.move(moviefile, dst)
+    elif action == 'symlink':
+        log.debug("Symlinking.")
+        os.symlink(moviefile, dst)
+    elif action == 'hardlink':
+        log.debug("Hardlinking.")
+        os.link(moviefile, dst)
+    log.info("Done. ヾ(＠⌒ー⌒＠)ノ")
+
+
 def exechanges(src, moviefile, dst, NEWDIR, action, conflict):
     if action == 'test':
         log.debug("Test action:")
@@ -43,25 +62,6 @@ def exechanges(src, moviefile, dst, NEWDIR, action, conflict):
         else:
             log.debug("Destination does not exist.")
             exeaction(moviefile, dst, NEWDIR, action)
-
-
-def exeaction(moviefile, dst, NEWDIR, action):
-    log.debug("Creating and renaming.")
-    if NEWDIR:
-        os.makedirs(os.path.dirname(dst))
-    if action == 'copy':
-        log.debug("Copying.")
-        shutil.copy(moviefile, dst)
-    elif action == 'move':
-        log.debug("Moving.")
-        shutil.move(moviefile, dst)
-    elif action == 'symlink':
-        log.debug("Symlinking.")
-        os.symlink(moviefile, dst)
-    elif action == 'hardlink':
-        log.debug("Hardlinking.")
-        os.link(moviefile, dst)
-    log.info("Done. ヾ(＠⌒ー⌒＠)ノ")
 
 
 def rename(string, filename, info):
@@ -183,7 +183,7 @@ def main():
     mediainfo = scraper.main(args.PATH)
     if 'episode' not in mediainfo:
         # Grab movie file and directory
-        mediafile = findfile(args.PATH, False)
+        mediafile = findfile(args.PATH)
         # Replace defined Format with real values
         dst = rename(args.set, mediafile, mediainfo)
     elif 'episode' in mediainfo and not os.path.isdir(args.PATH):
