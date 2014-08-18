@@ -6,6 +6,7 @@
 Dependencies:
 
 - tmdbsimple
+- guessit
 - pytvdbapi
 
 '''
@@ -23,78 +24,104 @@ import scraper
 log = logging.getLogger(__name__)
 
 
-def exeaction(moviefile, dst, NEWDIR, action):
-    log.debug("Creating and renaming.")
-    if NEWDIR:
-        os.makedirs(os.path.dirname(dst))
+def exe_action(src, dst, action):
+    """Applies the changes that are expected depending on the action.
+
+    :param src: subtitle to download.
+    :type src: string
+    :param dst: destination where the input file is going to be placed at
+    :type dst: string
+    :param action: string containing what to do with the input
+    :type action: string
+
+    """
     if action == 'copy':
         log.debug("Copying.")
-        shutil.copy(moviefile, dst)
+        shutil.copy(src, dst)
     elif action == 'move':
         log.debug("Moving.")
-        shutil.move(moviefile, dst)
+        shutil.move(src, dst)
     elif action == 'symlink':
         log.debug("Symlinking.")
-        os.symlink(moviefile, dst)
+        os.symlink(src, dst)
     elif action == 'hardlink':
         log.debug("Hardlinking.")
-        os.link(moviefile, dst)
+        os.link(src, dst)
     log.info("Done. ヾ(＠⌒ー⌒＠)ノ")
 
 
-def exechanges(src, moviefile, dst, NEWDIR, action, conflict):
+def exe_changes(src, dst, action, conflict):
+    """Applies the changes that are expected depending on the action.
+
+    :param src: subtitle to download.
+    :type src: string
+    :param dst: destination where the input file is going to be placed at
+    :type dst: string
+    :param action: string containing what to do with the input
+    :type action: string
+    """
     if action == 'test':
         log.debug("Test action:")
-        log.info("TEST: %s ->  %s" % (moviefile, dst))
+        log.info("TEST: %s ->  %s" % (src, dst))
     else:
         if os.path.exists(dst):
             log.debug("Destination exists.")
             if conflict == 'override':
                 log.debug("Override ON.")
-                exeaction(src, moviefile, dst, NEWDIR, action)
+                exe_action(src, dst, action)
             elif conflict == 'auto':
                 if os.stat(src).st_mtime > os.stat(dst).st_mtime:
                     log.debug("Override in auto mode, destination is older.")
-                    exeaction(src, moviefile, dst, NEWDIR, action)
+                    exe_action(src, dst, action)
             else:
                 log.error("FILE FOUND ON DESTINATION, OVERRIDE IS OFF")
                 sys.exit()
         else:
             log.debug("Destination does not exist.")
-            exeaction(moviefile, dst, NEWDIR, action)
+            os.makedirs(os.path.dirname(dst))
+            exe_action(src, dst, action)
 
 
-def rename(string, filename, info):
-    '''
-    Parse --set movieFormat
-    Parse --set serieFormat
-    '''
-    movieFormat = re.search('(?<=movieFormat=)"(.*?)"', string).group(1)
-    serieFormat = re.search('(?<=serieFormat=)"(.*?)"', string).group(1)
+def rename(set_argument, filename, media_info):
+    """It replaces the "variables" set in:
+    --set movieFormat (available: {n} {y} {fn} {ext})
+    --set serieFormat (available: {n} {s} {e} {en} {fb} {ext})
+    with those retrieved from TMDB and TVDB.
+
+    :param set_argument: set argument parsed from main
+    :type set_argument: string
+    :param filename: name of the input file
+    :type filename: string
+    :param media_info: is the info retrieved from TMDB or TVDB
+    :type media_info: dictionary
+
+    """
+    movieFormat = re.search('(?<=movieFormat=)"(.*?)"', set_argument).group(1)
+    serieFormat = re.search('(?<=serieFormat=)"(.*?)"', set_argument).group(1)
     ext = filename[-3:]
-    if 'episode' not in info:
+    if 'episode' not in media_info:
         movieFormat = re.sub(
             r'{fn}', '%s' % os.path.basename(filename), movieFormat)
         movieFormat = re.sub(
-            r'{n}', '%s' % info['title'], movieFormat)
+            r'{n}', '%s' % media_info['title'], movieFormat)
         movieFormat = re.sub(
-            r'{y}', '%s' % info['release_date'][0:4], movieFormat)
+            r'{y}', '%s' % media_info['release_date'][0:4], movieFormat)
         movieFormat = re.sub(
             r'{ext}', '%s' % ext, movieFormat)
         return movieFormat
     else:
-        serieFormat = re.sub(
-            r'{fn}', '%s' % os.path.basename(filename), serieFormat)
-        serieFormat = re.sub(
-            r'{n}', '%s' % info['tvsname'], serieFormat)
-        serieFormat = re.sub(
-            r'{s}', '%s' % info['season'], serieFormat)
-        serieFormat = re.sub(
-            r'{en}', '%s' % info['episode'], serieFormat)
-        serieFormat = re.sub(
-            r'{e}', '%s' % info['episodename'], serieFormat)
-        serieFormat = re.sub(
-            r'{ext}', '%s' % ext, serieFormat)
+        serieFormat = re.sub(r'{fn}',
+                             '%s' % os.path.basename(filename), serieFormat)
+        serieFormat = re.sub(r'{n}',
+                             '%s' % media_info['tvsname'], serieFormat)
+        serieFormat = re.sub(r'{s}',
+                             '%s' % media_info['season'], serieFormat)
+        serieFormat = re.sub(r'{en}',
+                             '%s' % media_info['episode'], serieFormat)
+        serieFormat = re.sub(r'{e}',
+                             '%s' % media_info['episodename'], serieFormat)
+        serieFormat = re.sub(r'{ext}',
+                             '%s' % ext, serieFormat)
         return serieFormat
 
 
@@ -120,10 +147,9 @@ def findfile(path):
                 total_size += fpsize
         # Check if the biggest file is bigger than 90%
         if fpsizen > (total_size * 0.9):
-            log.debug(
-                "Movie found: %s [%s bytes]" %
-                (os.path.basename(fpn), fpsize))
-            moviefile = fpn
+            log.debug("Movie found: %s [%s bytes]" %
+                      (os.path.basename(fpn), fpsize))
+            movie_file = fpn
         else:
             log.debug("No movie found under: %s" % path)
             log.error("FILE BIGGER THAN 90% OF DIRECTORY'S SIZE NOT FOUND.")
@@ -131,15 +157,15 @@ def findfile(path):
             sys.exit()
     # If the input is a file, we guess it is the movie
     else:
-        moviefile = path
-        log.debug(
-            "The input was a movie.\n+ Movie found: %s [%s bytes]" %
-            (os.path.basename(moviefile), os.stat(moviefile).st_size))
-    log.info("Input: %s" % os.path.basename(moviefile))
-    return moviefile
+        movie_file = path
+        log.debug("The input was a movie.\n+ Movie found: %s [%s bytes]" %
+                  (os.path.basename(movie_file), os.stat(movie_file).st_size))
+    log.info("Input: %s" % os.path.basename(movie_file))
+    return movie_file
 
 
-def parseinput():
+def parse_input():
+    """Regular ArgumentParser"""
     parser = argparse.ArgumentParser(
         description='Console tool for organizing your movies, \
         tvshows and anime. Aiming for simplistic usage and the results of \
@@ -169,6 +195,7 @@ def parseinput():
                         action='store_true')
     args = parser.parse_args()
 
+    # Define logging verbosity
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG)
     else:
@@ -177,33 +204,28 @@ def parseinput():
 
 
 def main():
-    args = parseinput()
+    args = parse_input()
     log.info("INPUT: %s" % os.path.basename(args.PATH))
+
     # Grab media info
-    mediainfo = scraper.main(args.PATH)
-    if 'episode' not in mediainfo:
+    media_info = scraper.main(args.PATH)
+    if 'episode' not in media_info:
         # Grab movie file and directory
-        mediafile = findfile(args.PATH)
+        media_file = findfile(args.PATH)
         # Replace defined Format with real values
-        dst = rename(args.set, mediafile, mediainfo)
-    elif 'episode' in mediainfo and not os.path.isdir(args.PATH):
-        mediafile = args.PATH
+        dst = rename(args.set, media_file, media_info)
+    elif 'episode' in media_info and not os.path.isdir(args.PATH):
+        media_file = args.PATH
         # Replace defined Format with real values
-        dst = rename(args.set, mediafile, mediainfo)
+        dst = rename(args.set, media_file, media_info)
     else:
         log.error("ERROR FINDING FILE.")
-    # Check if format has an added directory
-    if os.path.split(dst.rstrip(args.output))[0] == '':
-        NEWDIR = False
-    else:
-        NEWDIR = True
-        log.debug("+ New destination has added directories.")
+
     # Update destination
     dst = os.path.join(args.output, dst)
+
     # Execute changes
-    exechanges(
-        args.PATH, mediafile, dst, NEWDIR,
-        args.action, args.conflict)
+    exe_changes(media_file, dst, args.action, args.conflict)
 
 
 if __name__ == "__main__":
