@@ -135,7 +135,7 @@ def findfile(path):
         log.debug(
             "The input was a movie.\n+ Movie found: %s [%s bytes]" %
             (os.path.basename(moviefile), os.stat(moviefile).st_size))
-    log.error("Input: %s" % os.path.basename(moviefile))
+    log.info("Input: %s" % os.path.basename(moviefile))
     return moviefile
 
 

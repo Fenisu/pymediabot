@@ -1,0 +1,9 @@
+argparse==1.2.1
+babelfish==0.5.3
+docutils==0.12
+guessit==0.8
+httplib2==0.9
+pytvdbapi==0.5.0
+requests==2.3.0
+stevedore==0.15
+tmdbsimple==0.9.1

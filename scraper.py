@@ -161,7 +161,7 @@ def guesstype(path):
         TVSM = False
         MOVIE = True
     else:
-        print "Could not guess if Movie or TV Show"
+        log.error("Could not guess if Movie or TV Show.")
         sys.exit()
     return guessed, MOVIE, TVSM
 
@@ -206,8 +206,8 @@ def main(path):
 if __name__ == "__main__":
     media = main(sys.argv[1], True)
     try:
-        print "Movie: %s (%s)\nRuntime: %s min\nIMDB ID: %s\nPlot: %s" % \
+        print("Movie: %s (%s)\nRuntime: %s min\nIMDB ID: %s\nPlot: %s" % \
             (media['title'], media['release_date'][0:4],
-                media['runtime'], media['imdb_id'], media['overview'])
+                media['runtime'], media['imdb_id'], media['overview']))
     except:
-        print "Show %s" % (media['tvsname'])
+        print("Show %s" % (media['tvsname']))
