@@ -20,10 +20,8 @@ import sys
 import logging
 
 import scraper
-import guessit
 
 log = logging.getLogger(__name__)
-extensions = ['mkv', 'mp4', 'avi']
 
 
 def exe_action(src, dst, action):
@@ -166,28 +164,6 @@ def findfile(path):
     return movie_file
 
 
-def find_all_files(path, subtitles):
-    """It will find all the video files, and if required the subtitles matching
-    the video filename.
-    """
-    if os.path.isdir(path):
-        log.debug("Walking through: %s" % path)
-        videofiles = list()
-        for dirpath, dirnames, filenames in os.walk(path):
-            for f in filenames:
-                guessing = guessit.guess_video_info(f)
-                if guessing['container'] in extensions:
-                    videofiles.append({'file': os.path.join(dirpath, f),
-                                       'guess': guessing})
-                    log.debug("Found: %s" % path)
-        return videofiles
-    else:
-        log.debug("The input was a movie.\n+ Movie found: %s [%s bytes]" %
-                  (os.path.basename(path), os.stat(path).st_size))
-        log.info("Input: %s" % os.path.basename(path))
-        return [path]
-
-
 def parse_input():
     """Regular ArgumentParser"""
     parser = argparse.ArgumentParser(
@@ -200,9 +176,6 @@ def parse_input():
     parser.add_argument('-o', '--output',
                         help='output path (default: ~/Videos)',
                         default='~/Videos')
-    parser.add_argument('-s', '--subtitle',
-                        help='rename the subtitle found with the video file',
-                        action='store_true')
     parser.add_argument('--action',
                         help='rename action: move, copy, symlink, hardlink, \
                     test (default: test)',
@@ -234,10 +207,6 @@ def main():
     args = parse_input()
     log.info("INPUT: %s" % os.path.basename(args.PATH))
 
-    media_files = find_all_files(args.PATH, True)  # True for subtitles, FIX
-    for media_file in media_files:
-        media_info = scraper.main(media_file)
-    '''
     # Grab media info
     media_info = scraper.main(args.PATH)
     if 'episode' not in media_info:
@@ -254,10 +223,9 @@ def main():
 
     # Update destination
     dst = os.path.join(args.output, dst)
-    print(media_file)
+
     # Execute changes
     exe_changes(media_file, dst, args.action, args.conflict)
-    '''
 
 
 if __name__ == "__main__":
