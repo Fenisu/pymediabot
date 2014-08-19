@@ -1,6 +1,5 @@
 TODO
-
-- [ ] Evaluate support for python3
+- [ ] Evaluate the creation of an InputFile Class.
 - [ ] Support for taking seamlessly video with its subtitle
 
 
@@ -11,6 +10,7 @@ NEXT
 
 
 DONE
+- [X] Support for python3.4
 - [x] use logging instead of print for verbose and stdout
 - [x] replace if verbose: with a def verboseprint
 - [x] Support for TV Show files
