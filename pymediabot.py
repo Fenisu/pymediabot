@@ -20,8 +20,10 @@ import sys
 import logging
 
 import scraper
+import guessit
 
 log = logging.getLogger(__name__)
+extensions = ['mkv', 'mp4', 'avi']
 
 
 def exe_action(src, dst, action):
@@ -125,6 +127,61 @@ def rename(set_argument, filename, media_info):
         return serieFormat
 
 
+def guesspath(path):
+    """Guess some data from the path.
+    *guessit version 0.5.4 needs file extension to guess.
+    *Newly guessit version 0.7.1 can accept directory names.
+
+    :param path: the path of the file
+    :type path: string
+    :return: guessed data from the filename
+    :rtype: dict from guessit
+
+    """
+    guess = guessit.guess_file_info(path)
+#    print(guess)
+    if guess['type'] == 'video':
+        try:
+            log.debug(
+                "Guess: %s (%s)." % (guess['title'], guess['year']))
+        except:
+            log.debug("Guess: %s." % guess['title'])
+    elif not guess['type'] != 'unkown':
+        log.debug("Guess: %s." % guess['series'])
+
+    log.debug("Guess: %s." % guess['type'])
+    return guess
+
+
+def guesstype(path):
+    """Set some values depending on the results from the guessing.
+
+    :param path: the path of the file
+    :type path: string
+    :return: guessed data from the filename, if movie, if multiepisode
+    :rtype: dict from guessit, boolean, boolean
+
+    """
+    log.debug("Guessing name.")
+    guessed = guesspath(path)
+    #print path, guessed
+    if guessed['type'] == 'episode':
+        if 'episodeList' in guessed:
+            TVSM = len(guessed['episodeList'])
+        else:
+            TVSM = False
+        MOVIE = False
+        return guessed, MOVIE, TVSM
+    elif guessed['type'] == 'movie':
+        TVSM = False
+        MOVIE = True
+    else:
+        guessed = None
+        MOVIE = False
+        TVSM = False
+    return guessed, MOVIE, TVSM
+
+
 def findfile(path):
     '''
     This code is to find the movie file, guessing that the movie file
@@ -132,6 +189,7 @@ def findfile(path):
     '''
     # If the input is a directory, find movie
     if os.path.isdir(path):
+
         log.debug("Searching for movie file in directory.")
         total_size = 0
         fpsizen = 0
@@ -164,6 +222,36 @@ def findfile(path):
     return movie_file
 
 
+def find_all_files(path, subtitles):
+    """It will find all the video files, and if required the subtitles matching
+    the video filename.
+    """
+    if os.path.isdir(path):
+        log.debug("Walking through: %s" % path)
+        videofiles = list()
+        for dirpath, dirnames, filenames in os.walk(path):
+            for f in filenames:
+                guessing, movie, multiepisode = guesstype(f)
+                if guessing is not None and 'container' in guessing:
+                    if guessing['container'] in extensions:
+                        videofile = {'file': os.path.join(dirpath, f),
+                                     'guess': guessing}
+                        if multiepisode:
+                            videofile['TVSM'] = multiepisode
+                        elif movie:
+                            videofile['movie'] = movie
+                        videofiles.append(videofile)
+                        log.debug("Found: %s" % path)
+        #print(videofiles)
+        return videofiles
+    else:
+        log.debug("The input was a movie.\n+ Movie found: %s [%s bytes]" %
+                  (os.path.basename(path), os.stat(path).st_size))
+        log.info("Input: %s" % os.path.basename(path))
+        guessing = guessit.guess_video_info(path)
+        return [{'file': os.path.join(dirpath, f), 'guess': guessing}]
+
+
 def parse_input():
     """Regular ArgumentParser"""
     parser = argparse.ArgumentParser(
@@ -176,6 +264,9 @@ def parse_input():
     parser.add_argument('-o', '--output',
                         help='output path (default: ~/Videos)',
                         default='~/Videos')
+    parser.add_argument('-s', '--subtitle',
+                        help='rename the subtitle found with the video file',
+                        action='store_true')
     parser.add_argument('--action',
                         help='rename action: move, copy, symlink, hardlink, \
                     test (default: test)',
@@ -207,25 +298,26 @@ def main():
     args = parse_input()
     log.info("INPUT: %s" % os.path.basename(args.PATH))
 
-    # Grab media info
-    media_info = scraper.main(args.PATH)
-    if 'episode' not in media_info:
-        # Grab movie file and directory
-        media_file = findfile(args.PATH)
-        # Replace defined Format with real values
-        dst = rename(args.set, media_file, media_info)
-    elif 'episode' in media_info and not os.path.isdir(args.PATH):
-        media_file = args.PATH
-        # Replace defined Format with real values
-        dst = rename(args.set, media_file, media_info)
-    else:
-        log.error("ERROR FINDING FILE.")
+    media_files = find_all_files(args.PATH, True)  # True for subtitles, FIX
+    for media_file in media_files:
+        media_info = scraper.main(media_file)
+        if 'episode' not in media_info:
+            # Grab movie file and directory
+            media_file = findfile(media_file['file'])
+            # Replace defined Format with real values
+            dst = rename(args.set, media_file, media_info)
+        elif 'episode' in media_info:
+            media_file = findfile(media_file['file'])
+            # Replace defined Format with real values
+            dst = rename(args.set, media_file, media_info)
+        else:
+            log.error("ERROR FINDING FILE.")
 
-    # Update destination
-    dst = os.path.join(args.output, dst)
-
-    # Execute changes
-    exe_changes(media_file, dst, args.action, args.conflict)
+        # Update destination
+        dst = os.path.join(args.output, dst)
+        #print(media_file)
+        # Execute changes
+        exe_changes(media_file, dst, args.action, args.conflict)
 
 
 if __name__ == "__main__":

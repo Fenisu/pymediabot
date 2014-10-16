@@ -4,7 +4,7 @@ import os
 import logging as log
 
 import keyfiles
-import guessit
+#import guessit
 import tmdbsimple
 from pytvdbapi import api as tvdbapi
 
@@ -33,11 +33,10 @@ def tmdbsearch(title):
     for movie in results:
         results_names.append(movie['title'])
     if len(results_names) >= 3:
-        log.debug(" %s...." % ' * '.join(results_names[0:3]))
+        log.info(" %s...." % ' * '.join(results_names[0:3]))
     else:
-        log.debug(" %s." % ' * '.join(results_names))
+        log.info(" %s." % ' * '.join(results_names))
     result = tmdbsimple.Movies(results[0]['id']).info()
-    print(type(result))
     return result
 
 
@@ -85,7 +84,7 @@ def createtvs(show, season, episode, TVSM):
     return tvsepisode
 
 
-def tvdbsearch(title, season, episode, TVSM):
+def tvdbsearch(title, season, episode, TVSM=False):
     """tvdbsearch will search the TVDB after the title and return
     the info found from the first match.
 
@@ -117,7 +116,7 @@ def tvdbsearch(title, season, episode, TVSM):
     return tvs
 
 
-def tvdbget(imdbid, season, episode, TVSM):
+def tvdbget(imdbid, season, episode, TVSM=False):
     """tvdbget is a simple get from the TVDB with the known imdbid.
 
     :param imdbid: imdb ID to get the movie info
@@ -168,107 +167,72 @@ def searchnfo(path):
     :rtype: string
 
     """
-    if os.path.isdir(path):
-        for f in os.listdir(path):
-            if f.lower().endswith('.nfo'):
-                log.debug("NFO Found.")
-                return os.path.join(path, f)
+    if not os.path.isdir(path):
+        path = os.path.dirname(path)
+    for f in os.listdir(path):
+        if f.lower().endswith('.nfo'):
+            log.debug("NFO Found.")
+            return os.path.join(path, f)
     log.debug("NFO NOT Found.")
 
 
-def guesspath(path):
-    """Guess some data from the path.
-    *guessit version 0.5.4 needs file extension to guess.
-    *Newly guessit version 0.7.1 can accept directory names.
-
-    :param path: the path of the file
-    :type path: string
-    :return: guessed data from the filename
-    :rtype: dict from guessit
-
-    """
-    guess = guessit.guess_video_info(path)
-    if guess['type'] == 'video':
-        try:
-            log.debug(
-                "Guess: %s (%s)." % (guess['title'], guess['year']))
-        except:
-            log.debug("Guess: %s." % guess['title'])
-    else:
-        log.debug("Guess: %s." % guess['series'])
-
-    log.debug("Guess: %s." % guess['type'])
-    return guess
-
-
-def guesstype(path):
-    """Set some values depending on the results from the guessing.
-
-    :param path: the path of the file
-    :type path: string
-    :return: guessed data from the filename, if movie, if multiepisode
-    :rtype: dict from guessit, boolean, boolean
-
-    """
-    log.debug("Guessing name.")
-    guessed = guesspath(path)
-    if guessed['type'] == 'episode':
-        if 'episodeList' in guessed:
-            TVSM = len(guessed['episodeList'])
-        else:
-            TVSM = False
-        MOVIE = False
-    elif guessed['type'] == 'video':
-        TVSM = False
-        MOVIE = True
-    else:
-        log.error("Could not guess if Movie or TV Show.")
-        sys.exit()
-    return guessed, MOVIE, TVSM
-
-
-def main(path):
+def main(input_item):
     '''
     It will either find the IMDB ID in a nfo file or it will
     guess the title from the file/directory name. Then it will
     retrieve the info from tmdb or search and retrieve the info
     from the first match respectively.
     '''
-    guessed, MOVIE, TVSM = guesstype(path)
+    #guessed, MOVIE, TVSM = guesstype(path)
     try:
         log.debug("Searching for nfo file.")
-        nfofile = searchnfo(path)
+        nfofile = searchnfo(input_item)
         log.debug("Parsing file.")
         imdbid = parsenfo(nfofile)
-        if MOVIE:
+        if input_item['movie']:
             log.debug("Calling tmdbget for %s." % imdbid)
             media = tmdbget(imdbid)
             log.debug("Movie fetched.")
         else:
             log.debug("Calling tvdbget for %s." % imdbid)
-            media = tvdbget(imdbid, guessed['season'],
-                            guessed['episodeNumber'], TVSM)
+            if 'TVSM' in input_item['guess']:
+                media = tvdbget(imdbid, input_item['guess']['season'],
+                                input_item['guess']['episodeNumber'],
+                                input_item['guess']['TVSM'])
+            else:
+                media = tvdbget(imdbid, input_item['guess']['season'],
+                                input_item['guess']['episodeNumber'])
             log.debug("TV Show fetched.")
     except:
         log.debug("Fallback: Guessed name.")
-        if MOVIE:
-            log.debug("Calling tmdbsearch with %s." % guessed['title'])
-            media = tmdbsearch(guessed['title'])
+        if input_item['movie']:
+            log.debug("Calling tmdbsearch with %s." %
+                      input_item['guess']['title'])
+            media = tmdbsearch(input_item['guess']['title'])
             log.debug("Movie fetched.")
         else:
-            log.debug("Calling tvdbsearch with %s." % guessed['series'])
-            media = tvdbsearch(
-                guessed['series'], guessed['season'],
-                guessed['episodeNumber'], TVSM)
+            log.debug("Calling tvdbsearch with %s." %
+                      input_item['guess']['series'])
+            if 'TVSM' in input_item['guess']:
+                media = tvdbsearch(
+                    input_item['guess']['series'],
+                    input_item['guess']['season'],
+                    input_item['guess']['episodeNumber'],
+                    input_item['guess']['TVSM'])
+            else:
+                media = tvdbsearch(
+                    input_item['guess']['series'],
+                    input_item['guess']['season'],
+                    input_item['guess']['episodeNumber'])
             log.debug("TV Show fetched.")
     return media
 
 
 if __name__ == "__main__":
     media = main(sys.argv[1], True)
-    try:
-        print("Movie: %s (%s)\nRuntime: %s min\nIMDB ID: %s\nPlot: %s" %
-              (media['title'], media['release_date'][0:4],
-               media['runtime'], media['imdb_id'], media['overview']))
-    except:
-        print("Show %s" % (media['tvsname']))
+    #try:
+    #    print("Movie: %s (%s)\nRuntime: %s min\nIMDB ID: %s\nPlot: %s" %
+    #          (media['title'], media['release_date'][0:4],
+    #           media['runtime'], media['imdb_id'], media['overview']))
+    #except:
+    #    print("Show %s" % (media['tvsname']))
